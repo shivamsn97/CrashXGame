@@ -119,7 +119,7 @@ var cameraSpeed = 0.025;
             star.sprite.y = star.y * (fov / z) * app.renderer.screen.width + app.renderer.screen.height / 2;
 
             const dxCenter = star.sprite.x - app.renderer.screen.width / 2;
-            const dyCenter = star.sprite.y - app.renderer.screen.height;
+            const dyCenter = star.sprite.y - app.renderer.screen.height / 2;
             const distanceScale = Math.max(0, (2000 - z) / 2000);
 
             star.sprite.scale.x = distanceScale * 0.05;
