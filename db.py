@@ -36,7 +36,7 @@ class CryptoGameDB:
             self.cur.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     telegram_id BIGINT PRIMARY KEY,
-                    wallet_balance INTEGER DEFAULT 0
+                    wallet_balance DOUBLE PRECISION NOT NULL DEFAULT 0
                 );
             ''')
             self.cur.execute('''
@@ -59,18 +59,18 @@ class CryptoGameDB:
                 CREATE TABLE IF NOT EXISTS transactions (
                     transaction_id SERIAL PRIMARY KEY,
                     telegram_id BIGINT REFERENCES users(telegram_id),
-                    transaction_amount INTEGER NOT NULL,
+                    transaction_amount DOUBLE PRECISION NOT NULL,
                     remarks TEXT,
                     transaction_time TIMESTAMP
                 );        
             ''')
             self.conn.commit()
         
-    def add_user(self, telegram_id):
+    def add_user(self, telegram_id, amount = 0):
         with self.lock:
             self.cur.execute('''
-                INSERT INTO users (telegram_id) VALUES (%s)
-            ''', (telegram_id,))
+                INSERT INTO users (telegram_id, wallet_balance) VALUES (%s, %s)
+            ''', (telegram_id, amount))
             self.conn.commit()
         
     def get_user(self, telegram_id):
@@ -78,7 +78,13 @@ class CryptoGameDB:
             self.cur.execute('''
                 SELECT * FROM users WHERE telegram_id = %s
             ''', (telegram_id,))
-            return self.cur.fetchone()
+            rtn = self.cur.fetchone()
+            if not rtn:
+                return None
+            return {
+                'telegram_id': rtn[0],
+                'wallet_balance': rtn[1]
+            }
         
     def credit(self, telegram_id, transaction_amount, remarks):
         if transaction_amount <= 0:
@@ -106,9 +112,11 @@ class CryptoGameDB:
                 INSERT INTO transactions (telegram_id, transaction_amount, remarks) VALUES (%s, %s, %s)
             ''', (telegram_id, transaction_amount, remarks))
             self.cur.execute('''
-                UPDATE users SET wallet_balance = wallet_balance - %s WHERE telegram_id = %s
+                UPDATE users SET wallet_balance = wallet_balance - %s WHERE telegram_id = %s RETURNING wallet_balance
             ''', (transaction_amount, telegram_id))
+            wallet_balance = self.cur.fetchone()[0]
             self.conn.commit()
+            return wallet_balance
         
     def add_game(self, game_value):
         with self.lock:
@@ -130,8 +138,8 @@ class CryptoGameDB:
         user = self.get_user(telegram_id)
         if user is None:
             raise ValueError('User does not exist')
+        self.debit(telegram_id, bet_amount, f'Placed bet on game #{game_id}')
         with self.lock:
-            self.debit(telegram_id, bet_amount, f'Placed bet on game #{game_id}')
             self.cur.execute('''
                 INSERT INTO bets (telegram_id, game_id, bet_amount, multiplier) VALUES (%s, %s, %s, %s) RETURNING bet_id
             ''', (telegram_id, game_id, bet_amount, multiplier))
@@ -147,15 +155,14 @@ class CryptoGameDB:
             return self.cur.fetchone()
         
     def exit_bet(self, bet_id, multiplier):
+        bet = self.get_bet(bet_id)
         with self.lock:
-            bet = self.get_bet(bet_id)
             self.cur.execute('''
                 UPDATE bets SET multiplier = %s, exit_time = NOW() WHERE bet_id = %s
             ''', (multiplier, bet[0]))
-            self.cur.execute('''
-                UPDATE users SET wallet_balance = wallet_balance + %s WHERE telegram_id = %s
-            ''', (bet[3] * multiplier, bet[1]))
             self.conn.commit()
+        if multiplier > 0:
+            self.credit(bet[1], bet[3] * multiplier, f'Exited bet #{bet[0]}')
             
 
 class CurrentGame:
@@ -171,11 +178,15 @@ class CurrentGame:
         self.bets = dict()
         
     @staticmethod
-    def generate_multiplier():
-        """
-        A static function to generate a random value between 1 and 10.
-        """
-        return random.randint(1, 10)
+    def generate_multiplier(E=100):
+        return 12
+        H = random.random() * E * 0.99
+        if(H % 33 == 0):
+            return 1
+        val = (100 * E - H) / (E - H) / 100
+        if val <= 1:
+            return 1
+        return val
     
     def start_game(self, emitter_callback):
         """
@@ -189,54 +200,39 @@ class CurrentGame:
         
     def ticker(self):
         '''
-        Continuously running function to emit the multiplier starting from 1 to the current multiplier at an interval of 0.05 seconds. Should be time based, not sleep based.
+        Continuously running function to emit the multiplier starting from 1 to the current multiplier at an interval of 0.5 seconds. Should be time based, not sleep based.
         '''
         if self.current_game_id is None:
             raise ValueError('No active game found')
         ct = time.time()
-        prewaiting_period = 1
-        postwaiting_period = 1
+        self.emitter_callback({
+            'game_id': self.current_game_id,
+            'status': 'starting',
+            'multiplier': self.multiplier,
+            'bets': self.bets
+        })
+        ai = 0
         while True:
-            if time.time() - ct >= 0.1:
-                ct = time.time()
-                if waiting_period <= 0:
-                    break
-                waiting_period -= 0.1
-                self.emitter_callback({
-                    'game_id': self.current_game_id,
-                    'status': 'prewaiting',
-                    'bets': self.bets,
-                })
-        while True:
-            if time.time() - ct >= 0.1:
-                ct = time.time()
-                self.multiplier += 0.1
-                if self.multiplier > self.current_game_multiplier:
-                    break
+            ct = time.time()
+            if self.multiplier >= self.current_game_multiplier:
+                break
+            self.multiplier += 0.03
+            if ai % 5 == 0:
                 self.emitter_callback({
                     'game_id': self.current_game_id,
                     'status': 'running',
                     'multiplier': self.multiplier,
                     'bets': self.bets
                 })
+            ai = (ai + 1) % 10
+            time.sleep(0.1 - (time.time() - ct))
+            ct = time.time()
         self.emitter_callback({
             'game_id': self.current_game_id,
             'status': 'completed',
             'multiplier': self.multiplier,
             'bets': self.bets
         })
-        while True:
-            if time.time() - ct >= 0.1:
-                ct = time.time()
-                if waiting_period <= 0:
-                    break
-                waiting_period -= 0.1
-                self.emitter_callback({
-                    'game_id': self.current_game_id,
-                    'status': 'postwaiting',
-                    'bets': self.bets,
-                    'multiplier': self.multiplier
-                })
         self.end_game()
         
     def place_bet(self, telegram_id, bet_amount):
@@ -253,10 +249,12 @@ class CurrentGame:
         }
         return bet_id
         
-    def exit_game(self, bet_id, multiplier):
+    def exit_game(self, bet_id, multiplier = None):
         """
         A function to let a user exit the current game.
         """
+        if multiplier is None:
+            multiplier = self.multiplier
         if self.current_game_id is None:
             raise ValueError('No active game found')
         bet = self.db.get_bet(bet_id)
@@ -265,7 +263,7 @@ class CurrentGame:
         if bet[2] != self.current_game_id:
             raise ValueError('Bet is not for the current game')
         self.bets[bet_id]['multiplier'] = multiplier
-        self.db.exit_bet(bet[1], self.current_game_id, multiplier)
+        self.db.exit_bet(bet[0], multiplier)
         
     def end_game(self):
         """

@@ -37,6 +37,7 @@ PIXI.Assets.load(['/static/images/rocket-jet.json']).then(() =>
     anim.rotation = Math.PI / 2;
     anim.anchor.set(0.5, 1);
     anim.animationSpeed = rocket_anim_speed;
+    anim.scale.set(0.5); // set the scale to 0.5
     // anim.play();
     // app.stage.addChild(anim);
 
@@ -45,10 +46,10 @@ PIXI.Assets.load(['/static/images/rocket-jet.json']).then(() =>
     {
         if (multiplier <= 10)
         {
-            // at 1, it should be facing left, and at 10, it should be facing top
-            anim.rotation = (Math.PI / 2) * (1 - multiplier / 10);
-            var sn = Math.sin(multiplier * Math.PI / 20);
-            var cs = Math.cos(multiplier * Math.PI / 20);
+            const mlp = (multiplier - 1) * 10/9;
+            anim.rotation = (Math.PI / 2) * (1 - mlp / 10);
+            var sn = Math.sin(mlp * Math.PI / 20);
+            var cs = Math.cos(mlp * Math.PI / 20);
             anim.x = (app.screen.width * 0.75)*sn + app.screen.width * 0.1;
             anim.y = app.screen.height * 0.3 + (app.screen.height * 0.55)*cs;
         }
@@ -118,7 +119,7 @@ var cameraSpeed = 0.025;
             star.sprite.y = star.y * (fov / z) * app.renderer.screen.width + app.renderer.screen.height / 2;
 
             const dxCenter = star.sprite.x - app.renderer.screen.width / 2;
-            const dyCenter = star.sprite.y - app.renderer.screen.height / 2;
+            const dyCenter = star.sprite.y - app.renderer.screen.height;
             const distanceScale = Math.max(0, (2000 - z) / 2000);
 
             star.sprite.scale.x = distanceScale * 0.05;
@@ -127,8 +128,9 @@ var cameraSpeed = 0.025;
 
             // move the star upwards in the x direction
             if (multiplier <= 10) {
-                var sn = Math.sin(multiplier * Math.PI / 20);
-                var cs = Math.cos(multiplier * Math.PI / 20);
+                const mlp = (multiplier - 1) * 10/9;
+                var sn = Math.sin(mlp * Math.PI / 20);
+                var cs = Math.cos(mlp * Math.PI / 20);
             } else {
                 var sn = 1;
                 var cs = 0;
@@ -155,6 +157,14 @@ const multiplierX = new PIXI.Text('x', {
     fontWeight: 'bold',
 });
 
+const waitingText = new PIXI.Text('Round starting in 0 seconds!', {
+    fontFamily: 'Arial',
+    fontSize: 18,
+    fill: 'white',
+    align: 'center',
+    fontWeight: 'bold',
+});
+
 // center the text object
 multiplierText.anchor.set(1, 0.5);
 multiplierText.x = app.renderer.width / 2 + 38;
@@ -165,11 +175,39 @@ multiplierX.anchor.set(0, 0.5);
 multiplierX.x = app.renderer.width / 2 + 38;
 multiplierX.y = app.renderer.height / 2;
 
-// add the x object to the stage
-app.stage.addChild(multiplierX);
+waitingText.anchor.set(0.5);
+waitingText.x = app.renderer.width / 2;
+waitingText.y = app.renderer.height / 2;
 
-// add the text object to the stage
-app.stage.addChild(multiplierText);
+function setWaitingText(text) {
+    waitingText.text = text;
+}
+
+function show_multiplier(show = false) {
+    if (show) {
+        app.stage.addChild(multiplierText);
+        app.stage.addChild(multiplierX);
+        app.stage.removeChild(waitingText);
+    } else {
+        app.stage.removeChild(multiplierText);
+        app.stage.removeChild(multiplierX);
+        app.stage.removeChild(anim);
+        anim.stop();
+        playing = false;
+        setWaitingText('Please wait!')
+        app.stage.addChild(waitingText);
+    }
+}
+
+function wait(wait_time) {
+    show_multiplier(false);
+    setWaitingText('Round starting in ' + wait_time + ' seconds!');
+}
+
+function custom_message(text) {
+    show_multiplier(false);
+    setWaitingText(text);
+}
 
 function setMultiplier(mlp) {
     if (mlp < 0) {
@@ -242,15 +280,17 @@ function start() {
     }
     multiplierX.style.fill = 'white'
     multiplierText.style.fill = 'white'
-    multiplier = 0.0;
+    multiplier = 1.0;
+    show_multiplier(true);
     cameraSpeed = 0.025;
     app.stage.addChild(anim);
     anim.play();
     tiktok = setInterval(function(){
-        setMultiplier(multiplier + 0.02);
-    }, 20);
+        setMultiplier(multiplier + 0.003);
+    }, 10);
     playing = true;
 }
+
 
 // setTimeout(function(){
 //     crashed();
@@ -259,3 +299,5 @@ function start() {
 window.crash = crash;
 window.setMultiplier = setMultiplier;
 window.start = start;
+window.wait = wait;
+window.custom_message = custom_message;
