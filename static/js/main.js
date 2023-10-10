@@ -141,7 +141,7 @@ var cameraSpeed = 0.025;
 
 const multiplierText = new PIXI.Text('0.00', {
     fontFamily: 'Arial',
-    fontSize: 84,
+    fontSize: 48,
     fill: 'white',
     align: 'center',
     fontWeight: 'bold',
@@ -149,7 +149,7 @@ const multiplierText = new PIXI.Text('0.00', {
 
 const multiplierX = new PIXI.Text('x', {
     fontFamily: 'Arial',
-    fontSize: 84,
+    fontSize: 48,
     fill: ['#ffffff', '#00ff99'],
     align: 'center',
     fontWeight: 'bold',
@@ -157,12 +157,12 @@ const multiplierX = new PIXI.Text('x', {
 
 // center the text object
 multiplierText.anchor.set(1, 0.5);
-multiplierText.x = app.renderer.width / 2 + 25;
+multiplierText.x = app.renderer.width / 2 + 38;
 multiplierText.y = app.renderer.height / 2;
 
 // add the x object right next to the text
 multiplierX.anchor.set(0, 0.5);
-multiplierX.x = app.renderer.width / 2 + 25;
+multiplierX.x = app.renderer.width / 2 + 38;
 multiplierX.y = app.renderer.height / 2;
 
 // add the x object to the stage

@@ -16,16 +16,17 @@
     </script>
     <script src="https://code.jquery.com/jquery-3.7.1.slim.min.js" integrity="sha256-kmHvs0B+OpCW5GVHUNjv9rOmY0IvSIRcf7zGUDTDQM8=" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="/static/css/main.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
     <div class="flex flex-col h-screen">
         <div class="w-full bg-gray-900 py-4">
-            <h1 class="text-white text-center text-2xl font-bold">Crash-X</h1>
+            <p class="status_need" id="webview_data_status"></p>
         </div>
         <div class="flex flex-row h-2/3 lg:h-3/4">
-            <div class="w-1/4 bg-gray-600 h-full">
-            </div>
-            <div class="w-3/4 bg-gray-300 h-full" id="canvas">
+            <!-- <div class="w-1/4 bg-gray-600 h-full">
+            </div> -->
+            <div class="w-full bg-gray-300 h-full" id="canvas">
                 <p style="color: white" class="absolute text-sm ml-2 mt-2 font-mono"><i class="fa-solid fa-circle-exclamation mr-1" id="latency-symbol" style="color: gray"></i><span id="latency-indicator">-</span>ms</p>
             </div>
         </div>
@@ -76,7 +77,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="h-2/3 lg:h-auto lg:w-1/2 rounded-lg m-2 bg-gradient">
+                        <div id="place-bet-1" class="h-2/3 lg:h-auto lg:w-1/2 rounded-lg m-2 bg-gradient">
                             <div class="flex justify-center items-center h-full">
                                 <h2 class="text-white text-2xl font-bold">Place Bet</h2>
                             </div>
@@ -123,7 +124,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="h-2/3 lg:h-auto lg:w-1/2 rounded-lg m-2 bg-gradient">
+                        <div id="place-bet-2" class="h-2/3 lg:h-auto lg:w-1/2 rounded-lg m-2 bg-gradient">
                             <div class="flex justify-center items-center h-full">
                                 <h2 class="text-white text-2xl font-bold">Place Bet</h2>
                             </div>
@@ -134,9 +135,9 @@
         </div>
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/js/all.min.js" integrity="sha512-uKQ39gEGiyUJl4AI6L+ekBdGKpGw4xJ55+xyJG7YFlJokPNYegn9KwQ3P8A7aFQAUtUsAQHep+d/lrGqrbPIDQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script type="module" src="/static/js/tg.js"></script>
     <script type="module" src="/static/js/main.js"></script>
     <script type="module" src="/static/js/conn.js"></script>
-    <script src="https://telegram.org/js/games.js"></script>
 </body>
 </html>
             

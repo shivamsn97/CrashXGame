@@ -25,6 +25,7 @@ input[type=number] {
     background: #1157E7;
     background: linear-gradient(315deg, #1157E7, #73EF92);
     transition: background 2s ease;
+    user-select: none;
 }
 
 /* .bg-gradient:hover {
@@ -34,7 +35,7 @@ input[type=number] {
     cursor: pointer;
 } */
 
-.bg-gradient:hover {
+/* .bg-gradient:hover {
   background: #1157E7;
   background: linear-gradient(315deg, #09307e, #73EF92);
   transition: background 2s ease;
@@ -45,4 +46,4 @@ input[type=number] {
     background: #D744AE;
     background: linear-gradient(315deg, #D744AE, #C24243);
 }
-                            
+                             */
