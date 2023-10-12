@@ -178,8 +178,7 @@ class CurrentGame:
         self.bets = dict()
         
     @staticmethod
-    def generate_multiplier(E=100):
-        return 12
+    def generate_multiplier(MAX=99, E=100):
         H = random.random() * E * 0.99
         if(H % 33 == 0):
             return 1

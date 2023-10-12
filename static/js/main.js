@@ -115,7 +115,7 @@ var cameraSpeed = 0.025;
 
             const z = star.z - cameraZ;
 
-            star.sprite.x = star.x * (fov / z) * app.renderer.screen.width + app.renderer.screen.width / 2;
+            star.sprite.x = star.x * (fov / z) * app.renderer.screen.width + app.renderer.screen.width - 15;
             star.sprite.y = star.y * (fov / z) * app.renderer.screen.width + app.renderer.screen.height / 2;
 
             const dxCenter = star.sprite.x - app.renderer.screen.width / 2;
@@ -260,7 +260,7 @@ function crash() {
         explosion.x = anim.x + Math.sin(anim.rotation) * 100;
         explosion.y = anim.y - Math.cos(anim.rotation) * 100;
         explosion.anchor.set(0.5);
-        explosion.scale.set(1.5);
+        explosion.scale.set(1);
         explosion.loop = false;
         explosion.animationSpeed = 0.4;
         explosion.onComplete = () => {
