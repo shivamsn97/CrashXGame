@@ -9,11 +9,15 @@ import config
 from game import socketio
 import threading
 from db import CryptoGameDB, CurrentGame
+from uuid import uuid4
+from faker import Faker
+
+fake = Faker()
 
 app = Flask(__name__, static_folder='../static')
 app.config['SECRET_KEY'] = 'jirfhw3yug428qwyedvfgrwt238yew'
 socketio = SocketIO(app, cors_allowed_origins="*")
-
+SALT = 'r842eygu3wfbhvefy423tr5643ewrfdrtgfeffdc'
 
 class GameHandler:
     def __init__(self):
@@ -24,13 +28,45 @@ class GameHandler:
         self.runner_thread.daemon = True
         self.runner_thread.start()
         self.waiting_bets = {}
+        self.users = {}
+        
+    def player_connected(self, sid):
+        sid = hashlib.sha256((sid + SALT).encode('utf-8')).hexdigest()
+        self.users[sid] = {
+            'sid': sid,
+            'name': fake.first_name(),
+            'user_id': None,
+            'bet': None,
+        }
+        socketio.emit('player_join', self.users[sid])
+        
+    def player_disconnected(self, sid):
+        sid = hashlib.sha256((sid + SALT).encode('utf-8')).hexdigest()
+        if sid in self.users:
+            del self.users[sid]
+        socketio.emit('player_left', {'sid': sid})
+            
+    # def player_placed_bet(self, sid, amount):
+    #     sid = hashlib.sha256((sid + SALT).encode('utf-8')).hexdigest()
+    #     if sid in self.users:
+    #         self.users[sid]['bet'] = amount
+    #     # socketio.emit('player_placed_bet', {'sid': sid, 'amount': amount})
+            
+    # def player_cancelled_bet(self, sid):
+    #     sid = hashlib.sha256((sid + SALT).encode('utf-8')).hexdigest()
+    #     if sid in self.users:
+    #         self.users[sid]['bet'] = None
+    #     # socketio.emit('player_cancelled_bet', {'sid': sid})
         
     def send_waiting_bets(self):
         for tg_id in self.waiting_bets.keys():
             for bet in self.waiting_bets[tg_id].values():
                 if bet['status'] == 'waiting':
                     bet['status'] = 'active'
-                    bet['bet_id'] = self.current_game.place_bet(tg_id, bet['amount'])
+                    bet['bet_id'] = self.current_game.place_bet(tg_id, bet['amount'], bet['sid'])
+                    socketio.emit('player_placed_bet', {'sid': bet['sid'], 'amount': bet['amount']})
+                    if bet['sid'] in self.users:
+                        self.users[bet['sid']]['bet'] = bet['amount']
                     if not bet['bet_id']:
                         bet['status'] = 'waiting'
                         bet['bet_id'] = None
@@ -42,6 +78,9 @@ class GameHandler:
                 bet = self.waiting_bets[tg_id][bt]
                 if bet['status'] == 'active':
                     self.db.exit_bet(bet['bet_id'], 0)
+                    socketio.emit('player_cancelled_bet', {'sid': bet['sid']})
+                    if bet['sid'] in self.users:
+                        self.users[bet['sid']]['bet'] = None
                     del self.waiting_bets[tg_id][bt]
         
     @staticmethod
@@ -59,7 +98,7 @@ class GameHandler:
         elif data['status'] == 'completed':
             socketio.emit('game_update', {
                 'update': 'game_end',
-                'multiplier': data['multiplier']
+                'multiplier': data['multiplier'],
             })
         
     def runner(self):
@@ -75,9 +114,10 @@ class GameHandler:
             self.current_game.ticker()
             self.close_all_bets()
             time.sleep(2.5)
-            self.current_game.end_game()
             
-    def new_bet(self, user_id, bet_no, amount):
+    def new_bet(self, user_id, bet_no, amount, sid = None):
+        if sid:
+            sid = hashlib.sha256((sid + SALT).encode('utf-8')).hexdigest()
         print("NEW BET", user_id, bet_no, amount)
         if not user_id in self.waiting_bets:
             self.waiting_bets[user_id] = {}
@@ -90,7 +130,8 @@ class GameHandler:
         self.waiting_bets[user_id][bet_no] = {
             'amount': amount,
             'status': 'waiting',
-            'bet_id': None
+            'bet_id': None,
+            'sid': sid,
         }
         return {
             'user_id': user_id,
@@ -120,15 +161,31 @@ class GameHandler:
                 'bet_id': bet['bet_id'],
             }
         else:
+            sid = bet['sid']
             self.current_game.exit_game(bet['bet_id'])
             del self.waiting_bets[user_id][bet_no]
+            socketio.emit('player_cancelled_bet', {'sid': sid})
+            if sid in self.users:
+                self.users[sid]['bet'] = None
             return {
                 'success': True,
                 'bet_no': bet_no,
                 'bet_id': bet['bet_id'],
             }
-        
             
+    def toogle_bet(self, user_id, bet_no, amount):
+        print("TOOGLE BET", user_id, bet_no, amount)
+        # if there is a bet, cancel it else create a new one
+        if not user_id in self.waiting_bets:
+            self.waiting_bets[user_id] = {}
+        if bet_no in self.waiting_bets[user_id]:
+            return 'cancel_bet_ok', self.cancel_bet(user_id, bet_no)
+        else:
+            return 'place_bet_ok', self.new_bet(user_id, bet_no, amount, sid = request.sid)
+        
+    def get_last_game_results(self, limit=10):
+        return self.db.get_last_game_results(limit)
+        
     def start_game(self):
         self.current_game = CurrentGame(self.db)
         self.current_game.start_game(self.ticker_callback)
@@ -144,11 +201,42 @@ def index():
 
 @socketio.on('connect')
 def test_connect():
-    print('Client connected')
+    # create a uuid, and send it to the client
+    # the client will send it back with every request
+    game_handler.player_connected(request.sid)
+    print('Client connected:', request.sid)
+    
+@socketio.on('get_game_results')
+def get_game_results(data):
+    if not check_web_app_signature(data):
+        emit('get_game_results', {'error': 'Invalid signature'})
+        return
+    try:
+        limit = int(data['limit'])
+    except:
+        limit = 10
+    if limit < 1:
+        limit = 10
+    if limit > 100:
+        limit = 100
+    results = game_handler.get_last_game_results(limit)
+    emit('get_game_results', {'results': results})
+    
+@socketio.on('get_active_players')
+def get_active_players(data):
+    if not check_web_app_signature(data):
+        emit('get_active_players', {'error': 'Invalid signature'})
+        return
+    # game_handler.users as list
+    users = []
+    for sid in game_handler.users:
+        users.append(game_handler.users[sid])
+    emit('all_active_players', users)
 
 @socketio.on('disconnect')
 def test_disconnect():
-    print('Client disconnected')
+    print('Client disconnected:', request.sid)
+    game_handler.player_disconnected(request.sid)
     
 @socketio.on('place_bet')
 def place_bet(data):
@@ -173,7 +261,7 @@ def place_bet(data):
     if amount > user['wallet_balance']:
         emit('place_bet_ok', {'error': 'Insufficient funds'})
         return
-    r = game_handler.new_bet(user['telegram_id'], data['bet_no'], amount)
+    r = game_handler.new_bet(user['telegram_id'], data['bet_no'], amount, sid = request.sid)
     emit('place_bet_ok', r)
     
 @socketio.on('cancel_bet')
@@ -188,13 +276,41 @@ def cancel_bet(data):
         return
     r = game_handler.cancel_bet(user['telegram_id'], data['bet_no'])
     emit('cancel_bet_ok', r)
-    
+
+@socketio.on('toogle_bet')
+def toogle_bet(data):
+    user = data['user']
+    if not check_web_app_signature(user):
+        emit('place_bet_ok', {'error': 'Invalid signature'})
+        return
+    user = game_handler.db.get_user(user['user']['id'])
+    if not user:
+        emit('place_bet_ok', {'error': 'User not found'})
+        return
+    amount = data['amount']
+    if not isinstance(amount, int):
+        emit('place_bet_ok', {'error': 'Invalid amount'})
+        return
+    if amount < 1:
+        emit('place_bet_ok', {'error': 'Invalid amount'})
+        return
+    if amount > 1000:
+        emit('place_bet_ok', {'error': 'Invalid amount'})
+        return
+    if amount > user['wallet_balance']:
+        emit('place_bet_ok', {'error': 'Insufficient funds'})
+        return
+    s, r = game_handler.toogle_bet(user['telegram_id'], data['bet_no'], amount)
+    emit(s, r)
 
 # endpoint to measure latency
 @socketio.on('ping')
-def ping():
-    # time.sleep(random.triangular(0, 1, 0.07))
-    emit('pong')
+def ping(data):
+    # if True and check_web_app_signature(data):
+    #     emit('pong', {'ok': True})
+    # else:
+    #     emit('pong', {'error': 'Invalid signature'})
+    emit('pong', {'ok': True})
 
 @socketio.on('get_user')
 def get_user(user):
@@ -217,7 +333,7 @@ def get_user(user):
     if not user:
         emit('get_user', {'error': 'User not found'})
         return
-    bets = None
+    bets = []
     if user['telegram_id'] in game_handler.waiting_bets:
         bets = game_handler.waiting_bets[user['telegram_id']]
     emit('get_user', {'user': user, 'bets': bets})

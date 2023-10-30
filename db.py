@@ -42,7 +42,9 @@ class CryptoGameDB:
             self.cur.execute('''
                 CREATE TABLE IF NOT EXISTS games (
                     game_id SERIAL PRIMARY KEY,
-                    game_value INTEGER NOT NULL
+                    game_value DOUBLE PRECISION NOT NULL,
+                    game_time TIMESTAMP NOT NULL DEFAULT NOW(),
+                    crashed BOOLEAN NOT NULL DEFAULT FALSE
                 );
             ''')
             self.cur.execute('''
@@ -51,7 +53,7 @@ class CryptoGameDB:
                     telegram_id BIGINT REFERENCES users(telegram_id),
                     game_id INTEGER REFERENCES games(game_id),
                     bet_amount INTEGER NOT NULL,
-                    multiplier INTEGER,
+                    multiplier DOUBLE PRECISION,
                     exit_time TIMESTAMP
                 );
             ''')
@@ -134,6 +136,13 @@ class CryptoGameDB:
             ''', (game_id,))
             return self.cur.fetchone()
         
+    def crash_game(self, game_id):
+        with self.lock:
+            self.cur.execute('''
+                UPDATE games SET crashed = true WHERE game_id = %s
+            ''', (game_id,))
+            self.conn.commit()
+        
     def add_bet(self, telegram_id, game_id, bet_amount, multiplier):
         user = self.get_user(telegram_id)
         if user is None:
@@ -164,6 +173,16 @@ class CryptoGameDB:
         if multiplier > 0:
             self.credit(bet[1], bet[3] * multiplier, f'Exited bet #{bet[0]}')
             
+    def get_last_game_results(self, limit=10):
+        """
+        A function to get the results of the last 10 games in descending order of game_id.
+        """
+        with self.lock:
+            self.cur.execute('''
+                SELECT game_value FROM games WHERE crashed = true ORDER BY game_id DESC LIMIT %s
+            ''', (limit,))
+            return self.cur.fetchall()
+            
 
 class CurrentGame:
     """
@@ -185,6 +204,8 @@ class CurrentGame:
         val = (100 * E - H) / (E - H) / 100
         if val <= 1:
             return 1
+        # round off value to 2 decimal places
+        val = round(val, 2)
         return val
     
     def start_game(self, emitter_callback):
@@ -211,30 +232,31 @@ class CurrentGame:
             'bets': self.bets
         })
         ai = 0
-        while True:
+        if self.current_game_multiplier > 1:
             ct = time.time()
-            if self.multiplier >= self.current_game_multiplier:
-                break
-            self.multiplier += 0.03
-            if ai % 5 == 0:
-                self.emitter_callback({
-                    'game_id': self.current_game_id,
-                    'status': 'running',
-                    'multiplier': self.multiplier,
-                    'bets': self.bets
-                })
-            ai = (ai + 1) % 10
-            time.sleep(0.1 - (time.time() - ct))
-            ct = time.time()
+            while True:
+                self.multiplier += 0.03
+                if self.multiplier >= self.current_game_multiplier:
+                    break
+                time.sleep(0.1 - (time.time() - ct))
+                ct = time.time()
+                if ai % 5 == 0:
+                    self.emitter_callback({
+                        'game_id': self.current_game_id,
+                        'status': 'running',
+                        'multiplier': self.multiplier,
+                        'bets': self.bets
+                    })
+                ai = (ai + 1) % 10
         self.emitter_callback({
             'game_id': self.current_game_id,
             'status': 'completed',
-            'multiplier': self.multiplier,
+            'multiplier': self.current_game_multiplier,
             'bets': self.bets
         })
         self.end_game()
         
-    def place_bet(self, telegram_id, bet_amount):
+    def place_bet(self, telegram_id, bet_amount, sid):
         """
         A function to let a user place a bet on the current game.
         """
@@ -268,5 +290,6 @@ class CurrentGame:
         """
         A function to end the current game and start a new one.
         """
+        self.db.crash_game(self.current_game_id)    
         self.current_game_id = None
         self.current_game_multiplier = None

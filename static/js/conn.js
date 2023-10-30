@@ -12,6 +12,7 @@ function setConnectionStatus(status) {
         $('#latency-symbol').addClass('fa-wifi');
         updateLatency();
     } else {
+        stop_game();
         $('#latency-symbol').css('color', 'red');
         $('#latency-symbol').removeClass('fa-wifi');
         $('#latency-indicator').text('-');
@@ -30,14 +31,18 @@ function set_place_bet_text(state, betno) {
         $('#place-bet-' + betno + ' h6').text('');
         $("#place-bet-" + betno).css('background', 'linear-gradient(315deg, #1157E7, #73EF92)');
     } else if (state == 'playing') {
-        $('#place-bet-' + betno + ' h2').text('Bet Placed');
-        $('#place-bet-' + betno + ' h6').text('Release to exit!');
+        $('#place-bet-' + betno + ' h2').text('Cash Out!');
+        $('#place-bet-' + betno + ' h6').text('');
         $("#place-bet-" + betno).css('background', 'linear-gradient(315deg, #FFD800, #FF9800)');
     } else if (state == 'waiting') {
         $('#place-bet-' + betno + ' h2').text('Waiting');
-        $('#place-bet-' + betno + ' h6').text('Release to cancel!');
+        $('#place-bet-' + betno + ' h6').text('Click to cancel!');
         $("#place-bet-" + betno).css('background', 'linear-gradient(315deg, #FFB800, #FF7800)');
     }
+}
+
+function set_current_bet_profit(betno, profit) {
+    $('#place-bet-' + betno + ' h6').text(`$${profit.toFixed(2)}`);
 }
 
 const Game = {
@@ -53,7 +58,11 @@ const Game = {
         console.log('setting-bets', bets)
         if (bets[1]) {
             this.bet1 = bets[1];
-            set_place_bet_text('waiting', 1);
+            if (bets[1].status == 'active') {
+                set_place_bet_text('playing', 1);
+            } else {
+                set_place_bet_text('waiting', 1);
+            }
         } else {
             this.bet1 = null;
             if (this.state == 'waiting') {
@@ -64,7 +73,11 @@ const Game = {
         }
         if (bets[2]) {
             this.bet2 = bets[2];
-            set_place_bet_text('waiting', 2);
+            if (bets[2].status == 'active') {
+                set_place_bet_text('playing', 2);
+            } else {
+                set_place_bet_text('waiting', 2);
+            }
         } else {
             this.bet2 = null;
             if (this.state == 'waiting') {
@@ -153,6 +166,12 @@ const Game = {
                 this.state = 'playing';
             }
             setMultiplier(data.multiplier);
+            if (this.bet1 && this.bet1.status == 'active') {
+                set_current_bet_profit(1, data.multiplier * this.bet1.amount);
+            }
+            if (this.bet2 && this.bet2.status == 'active') {
+                set_current_bet_profit(2, data.multiplier * this.bet2.amount);
+            }
             TgApp.haptic();
         } else if (update == 'game_end') {
             crash();
@@ -162,7 +181,7 @@ const Game = {
             for (let i=0; i<8; i++) {
                 setTimeout(() => {
                     TgApp.haptic('heavy');
-                }, i*100);
+                }, i*50);
             }
             socket.emit('get_user', TgApp.initDataUnsafe);
             if (this.bet1) {
@@ -175,12 +194,70 @@ const Game = {
             } else {
                 set_place_bet_text('no_bet', 2);
             }
-            
+            this.addResult(data.multiplier);
         }
+    },
+    addResult(result) {
+        const result_div = $('<div></div>');
+        result_div.addClass('bg-gray-300 border border-gray-600 rounded rounded-xl text-center text-sm mx-1 px-1 results');
+        result_div.text(result + 'x');
+        // remove older elements if there are more than 10
+        const psr = $('#past-results');
+        if (psr.children().length >= 10) {
+            psr.children().first().remove();
+        }
+        psr.append(result_div);
+        $('.results').addClass("scrolling");
+        $('.results').on("animationend", () => {
+            $('.results').removeClass("scrolling");
+        });
+    },
+    addPlayer(sid, username, bet_amount = null, pp_url = null) {
+        $(`#player-${sid}`).remove();
+        if (!username) {
+            username = 'Anonymous';
+        }
+        var pp_elem = null;
+        if (!pp_url) {
+            pp_elem = '<i class="fa-solid fa-user-circle"></i>'
+        } else {
+            pp_elem = `<img src="${pp_url}" class="rounded-full w-8 h-8">`
+        }
+        if (!bet_amount) {
+            bet_amount = '🤔';
+        } else {
+            bet_amount = '$' + parseFloat(bet_amount).toFixed(2);
+        }
+        const player_div = $(`
+            <ul id='player-${sid}' class="flex flex-row items-center text-white mt-2 ml-2">
+                <li class="mr-1">
+                    ${pp_elem}
+                </li>
+                <li class="mr-1">
+                    <p class="text-xs font-bold">${username}</p>
+                </li>
+                <li>
+                    <p class="opba text-xs font-bold">${bet_amount}</p>
+                </li>
+            </ul>
+        `);
+        // add to top
+        $('#other-players').prepend(player_div);
+    },
+    clearPlayers() {
+        $('#other-players').empty();
+    },
+    updatePlayerBet(sid, amount) {
+        $(`#player-${sid} .opba`).text(`$${parseFloat(amount).toFixed(2)}`);
+    },
+    removePlayer(sid) {
+        $(`#player-${sid}`).remove();
+    },
+    removePlayerBet(sid) {
+        $(`#player-${sid} .opba`).text(`🤔`);
     },
     placeBet1(amount) {
         socket.emit('place_bet', {
-            ytesy: 'sdfdgf',
             user: TgApp.initDataUnsafe,
             amount: amount,
             bet_no: 1
@@ -210,27 +287,99 @@ const Game = {
             });
         }
     },
-
+    toogleBet1(amount) {
+        socket.emit('toogle_bet', {
+            user: TgApp.initDataUnsafe,
+            amount: amount,
+            bet_no: 1
+        });
+    },
+    toogleBet2(amount) {
+        console.log('toogle bet2:', amount);
+        socket.emit('toogle_bet', {
+            user: TgApp.initDataUnsafe,
+            amount: amount,
+            bet_no: 2
+        });
+    },
     hold_bet_1() {
-        const amount = $('#bet1-amount').val().substr(1);
-        this.placeBet1(parseInt(amount));
+        // const amount = $('#bet1-amount').val().substr(1);
+        // this.toogleBet1(parseInt(amount));
     }, 
     hold_bet_2() {
-        const amount = $('#bet2-amount').val().substr(1);
-        this.placeBet2(parseInt(amount));
+        // const amount = $('#bet2-amount').val().substr(1);
+        // this.toogleBet2(parseInt(amount));
     },
     release_bet_1() {
-        this.releaseBet1();
+        // this.releaseBet1();
     },
     release_bet_2() {
-        this.releaseBet2();
+        // this.releaseBet2();
+    },
+    click_bet_1() {
+        const amount = $('#bet1-amount').val().substr(1);
+        this.toogleBet1(parseInt(amount));
+    },
+    click_bet_2() {
+        const amount = $('#bet2-amount').val().substr(1);
+        this.toogleBet2(parseInt(amount));
     }
 }
+
+socket.on('player_join', (data) => {
+    const sid = data.sid;
+    const username = data.name;
+    const bet_amount = data.amount;
+    var pp_url = null;
+    if (data.pp_url) {
+        pp_url = data.pp_url;
+    }
+    Game.addPlayer(sid, username, bet_amount, pp_url);
+});
+
+socket.on('player_left', (data) => {
+    const sid = data.sid;
+    Game.removePlayer(sid);
+});
+
+socket.on('player_placed_bet', (data) => {
+    const sid = data.sid;
+    const bet_amount = data.amount;
+    console.log('player placed bet:', sid, bet_amount);
+    Game.updatePlayerBet(sid, bet_amount);
+});
+
+socket.on('player_cancelled_bet', (data) => {
+    const sid = data.sid;
+    console.log('player cancelled bet:', sid);
+    Game.removePlayerBet(sid);
+});
+
+socket.on('all_active_players', (data) => {
+    console.log('all active players:', data);
+    Game.clearPlayers();
+    for (let i=0; i<data.length; i++) {
+        const player = data[i];
+        console.log('adding player:', player);
+        Game.addPlayer(player.sid, player.name, player.amount, player.pp_url);
+    }
+});
 
 socket.on('connect', () => {
     console.log('Connected!');
     setConnectionStatus(true);
     socket.emit('get_user', TgApp.initDataUnsafe);
+    socket.emit('get_game_results', TgApp.initDataUnsafe);
+    socket.emit('get_active_players', TgApp.initDataUnsafe);
+});
+
+socket.on('get_game_results', (data) => {
+    console.log('game results:', data);
+    // first remove all the results
+    $('#past-results').empty();
+    for (let i=data.results.length - 1; i>=0; i--) {
+        Game.addResult(data.results[i]);
+    }
 });
 
 socket.on('get_user', (data) => {
@@ -238,7 +387,7 @@ socket.on('get_user', (data) => {
         TgApp.closeWithAlert('Alert: ' + data.error)
         return;
     }
-    console.log('useraddsfdf:', data.user.wallet_balance);
+    console.log('useraddsfdf:', data.bets);
     Game.setAmount(data.user.wallet_balance);
     Game.setBets(data.bets);
 });
@@ -267,8 +416,8 @@ socket.on('disconnect', () => {
 
 function calculate_latency(callback) {
     const start_time = Date.now();
-    socket.emit('ping');
-    socket.once('pong', () => {
+    socket.emit('ping', TgApp.initDataUnsafe);
+    socket.once('pong', (data) => {
         const latency = Math.floor((Date.now() - start_time)/2);
         if (callback) {
             callback(latency);
@@ -339,6 +488,17 @@ $("#place-bet-2").on('mouseup touchend', function() {
     // $("#place-bet-2").css('background', 'linear-gradient(315deg, #1157E7, #73EF92)');
     // $('#place-bet-2 h2').text('Place Bet');
     Game.release_bet_2();
+    Telegram.WebApp.HapticFeedback.impactOccurred('soft')
+});
+
+$("#place-bet-1").on('click', function() {
+    console.log('click1');
+    Game.click_bet_1();
+    Telegram.WebApp.HapticFeedback.impactOccurred('soft')
+});
+$("#place-bet-2").on('click', function() {
+    console.log('click2');
+    Game.click_bet_2();
     Telegram.WebApp.HapticFeedback.impactOccurred('soft')
 });
 

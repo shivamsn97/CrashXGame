@@ -44,8 +44,8 @@ const TgApp = {
                     TgApp.Verified = true;
                 } else {
                     TgApp.Verified = false;
-                    $('#not_verified').removeClass('hidden');
-                    $('#main_section').addClass('hidden');
+                    // $('#not_verified').removeClass('hidden');
+                    // $('#main_section').addClass('hidden');
                     console.log('not verified');
                 }
             });

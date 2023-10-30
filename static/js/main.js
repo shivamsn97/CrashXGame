@@ -52,6 +52,10 @@ PIXI.Assets.load(['/static/images/rocket-jet.json']).then(() =>
             var cs = Math.cos(mlp * Math.PI / 20);
             anim.x = (app.screen.width * 0.75)*sn + app.screen.width * 0.1;
             anim.y = app.screen.height * 0.3 + (app.screen.height * 0.55)*cs;
+        } else {
+            anim.rotation = 0;
+            anim.x = app.screen.width * 0.85;
+            anim.y = app.screen.height * 0.3;
         }
     });
 });
@@ -273,6 +277,22 @@ function crash() {
     playing = false;
 }
 
+function stop_game() {
+    // do everything as crash, but without any animation and explosion
+    if (!playing) {
+        console.log('already not playing');
+        return;
+    }
+    multiplierX.style.fill = 'white'
+    multiplierText.style.fill = 'white'
+    clearInterval(tiktok);
+    cameraSpeed = 0.025;
+    app.stage.removeChild(anim);
+    anim.stop();
+    playing = false;
+    console.log('stopped game');
+}
+
 function start() {
     if (playing) {
         console.log('already playing');
@@ -301,3 +321,4 @@ window.setMultiplier = setMultiplier;
 window.start = start;
 window.wait = wait;
 window.custom_message = custom_message;
+window.stop_game = stop_game;

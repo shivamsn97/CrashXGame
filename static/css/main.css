@@ -28,22 +28,15 @@ input[type=number] {
     user-select: none;
 }
 
-/* .bg-gradient:hover {
-    background: #3CA696;
-    background: linear-gradient(315deg, #3CA696, #FCBFAD);
-    transition: background 2s ease;
-    cursor: pointer;
-} */
-
-/* .bg-gradient:hover {
-  background: #1157E7;
-  background: linear-gradient(315deg, #09307e, #73EF92);
-  transition: background 2s ease;
-  cursor: pointer;
+@keyframes scrollAnimation {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
 }
 
-.bg-gradient:active {
-    background: #D744AE;
-    background: linear-gradient(315deg, #D744AE, #C24243);
+.scrolling {
+  animation: scrollAnimation 1s ease-in-out;
 }
-                             */
